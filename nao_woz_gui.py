@@ -8,7 +8,6 @@ tts_service = None
 motion_service = None
 posture_service = None
 audio_service = None
-leds_service = None
 
 # main window with three panels
 # region
@@ -72,7 +71,6 @@ def connectNao(naoIP):
     global motion_service
     global posture_service
     global audio_service
-    global leds_service
 
     try:
         session = qi.Session()
@@ -91,14 +89,12 @@ def connectNao(naoIP):
         motion_service  = session.service("ALMotion")
         posture_service = session.service("ALRobotPosture")
         audio_service = session.service("ALAudioDevice")
-        leds_service = session.service("ALLeds")
     except Exception as e:
         print(f"Failed to load services: {e}")
         return False
 
     # executed properly
     audio_service.setOutputVolume(60)
-    leds_service.fadeRGB("FaceLeds", 0x0000FF, 0.5)
     tts_service.say("Connected to Nao")
     posture_service.goToPosture("Sit", 0.5)
     return True
@@ -161,8 +157,68 @@ def fillPanel1(panel = panel1):
             padx=5
         )
 
-# built-in and/or custom speech
+# robot movement, LEDs, or actions
 def fillPanel2(panel = panel2):
+    # create sections
+    # region
+    section1 = tk.Frame(panel, bd=1, relief="solid")
+    section2 = tk.Frame(panel, bd=1, relief="solid")
+    section3 = tk.Frame(panel, bd=1, relief="solid")
+
+    # pack sections
+    sections = [section1, section2, section3]
+    for _, object in enumerate(sections):
+        object.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+    # endregion
+
+    # create and pack section 1 buttons
+    # region
+    def headLeft():
+        motion_service.setAngles("HeadYaw", math.radians(20), 0.1)
+
+    def headMiddle():
+        motion_service.setAngles("HeadYaw", math.radians(0), 0.1)
+
+    def headRight():
+        motion_service.setAngles("HeadYaw", math.radians(-20), 0.1)
+        
+    button1_1 = tk.Button(section1, text="Look Left", command=headLeft)
+    button1_2 = tk.Button(section1, text="Look Middle", command=headMiddle)
+    button1_3 = tk.Button(section1, text="Look Right", command=headRight)
+
+    for button in [button1_1, button1_2, button1_3]:
+        button.pack(fill="x", padx=5, pady=5)
+
+    # endregion
+    
+    # # create and pack section 2 buttons
+    # # region
+    # button2_1 = tk.Button(section2, text="Blue", bg="#30c7c2", command=lambda: leds_service.fadeRGB("FaceLeds", 0x0000FF, 0.5))
+    # button2_2 = tk.Button(section2, text="Green", bg="#30c73c", command=lambda: leds_service.fadeRGB("FaceLeds", 0x00FF00, 0.5))
+    # button2_3 = tk.Button(section2, text="Red", bg="#bf342a", command=lambda: leds_service.fadeRGB("FaceLeds", 0xFF0000, 0.5))
+
+    # for button in [button2_1, button2_2, button2_3]:
+    #     button.pack(fill="x", padx=5, pady=5)
+
+    # # endregion
+
+    # create and pack section 3 buttons
+    # region
+    button3_1 = tk.Button(section3, text="Sit", command=lambda: posture_service.goToPosture("Sit", 0.5))
+    button3_2 = tk.Button(section3, text="Stand", command=lambda: posture_service.goToPosture("Stand", 0.5))
+
+    for button in [button3_1, button3_2]:
+        button.pack(fill="x", padx=5, pady=5)
+
+    # endregion
+
+# camera
+def fillPanel3(panel = panel3):
     # horizontally aligned frame
     frame0 = tk.Frame(panel)
     frame0.pack(anchor="w", padx=5, pady=5)
@@ -244,58 +300,6 @@ def fillPanel2(panel = panel2):
             padx=5
         )
 
-# robot movement, LEDs, or actions
-def fillPanel3(panel = panel3):
-    # create sections
-    # region
-    section1 = tk.Frame(panel, bd=1, relief="solid")
-    section2 = tk.Frame(panel, bd=1, relief="solid")
-    section3 = tk.Frame(panel, bd=1, relief="solid")
-
-    # pack sections
-    sections = [section1, section2, section3]
-    for _, object in enumerate(sections):
-        object.pack(
-            side="left",
-            fill="both",
-            expand=True
-        )
-
-    # endregion
-
-    # create and pack section 1 buttons
-    # region
-    def nodHead():
-        motion_service.setAngles("HeadPitch", math.radians(15), 0.1)
-        motion_service.setAngles("HeadPitch", math.radians(0), 0.1)
-
-    button1_1 = tk.Button(section1, text="Nod Head", command=nodHead)
-
-    for button in [button1_1]:
-        button.pack(fill="x", padx=5, pady=5)
-
-    # endregion
-    
-    # create and pack section 2 buttons
-    # region
-    button2_1 = tk.Button(section2, text="Blue", bg="#30c7c2", command=lambda: leds_service.fadeRGB("FaceLeds", 0x0000FF, 0.5))
-    button2_2 = tk.Button(section2, text="Green", bg="#30c73c", command=lambda: leds_service.fadeRGB("FaceLeds", 0x00FF00, 0.5))
-    button2_3 = tk.Button(section2, text="Red", bg="#bf342a", command=lambda: leds_service.fadeRGB("FaceLeds", 0xFF0000, 0.5))
-
-    for button in [button2_1, button2_2, button2_3]:
-        button.pack(fill="x", padx=5, pady=5)
-
-    # endregion
-
-    # create and pack section 3 buttons
-    # region
-    button3_1 = tk.Button(section3, text="Sit", command=lambda: posture_service.goToPosture("Sit", 0.5))
-    button3_2 = tk.Button(section3, text="Stand", command=lambda: posture_service.goToPosture("Stand", 0.5))
-
-    for button in [button3_1, button3_2]:
-        button.pack(fill="x", padx=5, pady=5)
-
-    # endregion
 
 fillPanel1(panel1)
 fillPanel2(panel2)
