@@ -1,5 +1,9 @@
-import tkinter as tk
-import qi, math
+import tkinter as tk # python interactable panel library
+import qi # nao API
+import math # joint movement
+from PIL import Image, ImageTk # rendering images in tkinter
+import threading # threading image retrieval from camera
+import sys, signal # closing application
 
 
 # services. loaded in connectNao
@@ -9,15 +13,24 @@ motion_service = None
 posture_service = None
 audio_service = None
 
+# NAO video
+video_service = None
+cameraID = None
+cameraLabel = None
+
+# threading
+latestFrame = None
+frameLock = threading.Lock()
+cameraStop = threading.Event()
+cameraThread = None
+
 # main window with three panels
 # region
 root = tk.Tk()
 root.title("NAO HRI Control Panel")
 root.geometry("700x400")
 
-# row grid (3)
-for i in range(3):
-    root.rowconfigure(i, weight=1)
+root.rowconfigure(2, weight=2)
 
 # column grid (1)
 root.columnconfigure(0, weight=1)
@@ -71,6 +84,8 @@ def connectNao(naoIP):
     global motion_service
     global posture_service
     global audio_service
+    global video_service
+    global cameraID
 
     try:
         session = qi.Session()
@@ -89,14 +104,25 @@ def connectNao(naoIP):
         motion_service  = session.service("ALMotion")
         posture_service = session.service("ALRobotPosture")
         audio_service = session.service("ALAudioDevice")
+        video_service = session.service("ALVideoDevice")
     except Exception as e:
         print(f"Failed to load services: {e}")
         return False
 
+    # setup camera
+    # Name: NAO_WOZ_Camera
+    # Camera: Top (forehead) Camera
+    # Resolution: 320x240px
+    # Colour Space: RGB
+    # Frames per Second: 15fps
+    cameraID = video_service.subscribeCamera("NAO_WOZ_Camera", 0, 1, 11, 15)
+
     # executed properly
     audio_service.setOutputVolume(60)
     tts_service.say("Connected to Nao")
-    posture_service.goToPosture("Sit", 0.5)
+    posture_service.goToPosture("Sit", 0.1)
+    motion_service.setAngles("HeadPitch", math.radians(10), 0.1)
+
     return True
 
 # connection to Nao
@@ -132,6 +158,8 @@ def fillPanel1(panel = panel1):
                 text=f"Status: Connected at {naoIP}",
                 fg="green"
             )
+
+            startCamera()
         else:
             statusLabel.config(
                 text=f"Status: Not Connected",
@@ -157,13 +185,13 @@ def fillPanel1(panel = panel1):
             padx=5
         )
 
-# robot movement, LEDs, or actions
+# robot head movement and actions
 def fillPanel2(panel = panel2):
     # create sections
     # region
-    section1 = tk.Frame(panel, bd=1, relief="solid")
-    section2 = tk.Frame(panel, bd=1, relief="solid")
-    section3 = tk.Frame(panel, bd=1, relief="solid")
+    section1 = tk.Frame(panel, bd=1, relief="flat")
+    section2 = tk.Frame(panel, bd=1, relief="flat")
+    section3 = tk.Frame(panel, bd=1, relief="flat")
 
     # pack sections
     sections = [section1, section2, section3]
@@ -180,126 +208,152 @@ def fillPanel2(panel = panel2):
     # region
     def headLeft():
         motion_service.setAngles("HeadYaw", math.radians(20), 0.1)
+        
+    button1_1 = tk.Button(section1, text="Look Left", command=headLeft)
 
+    for button in [button1_1]:
+        button.pack(fill="x", padx=5, pady=5)
+    # endregion
+
+    # create and pack section 2 buttons
+    # region
     def headMiddle():
         motion_service.setAngles("HeadYaw", math.radians(0), 0.1)
 
-    def headRight():
-        motion_service.setAngles("HeadYaw", math.radians(-20), 0.1)
-        
-    button1_1 = tk.Button(section1, text="Look Left", command=headLeft)
-    button1_2 = tk.Button(section1, text="Look Middle", command=headMiddle)
-    button1_3 = tk.Button(section1, text="Look Right", command=headRight)
+    button2_1 = tk.Button(section2, text="Look Middle", command=headMiddle)
 
-    for button in [button1_1, button1_2, button1_3]:
+    for button in [button2_1]:
         button.pack(fill="x", padx=5, pady=5)
-
     # endregion
-    
-    # # create and pack section 2 buttons
-    # # region
-    # button2_1 = tk.Button(section2, text="Blue", bg="#30c7c2", command=lambda: leds_service.fadeRGB("FaceLeds", 0x0000FF, 0.5))
-    # button2_2 = tk.Button(section2, text="Green", bg="#30c73c", command=lambda: leds_service.fadeRGB("FaceLeds", 0x00FF00, 0.5))
-    # button2_3 = tk.Button(section2, text="Red", bg="#bf342a", command=lambda: leds_service.fadeRGB("FaceLeds", 0xFF0000, 0.5))
-
-    # for button in [button2_1, button2_2, button2_3]:
-    #     button.pack(fill="x", padx=5, pady=5)
-
-    # # endregion
 
     # create and pack section 3 buttons
     # region
-    button3_1 = tk.Button(section3, text="Sit", command=lambda: posture_service.goToPosture("Sit", 0.5))
-    button3_2 = tk.Button(section3, text="Stand", command=lambda: posture_service.goToPosture("Stand", 0.5))
+    def headRight():
+        motion_service.setAngles("HeadYaw", math.radians(-20), 0.1)
 
-    for button in [button3_1, button3_2]:
+    button3_1 = tk.Button(section3, text="Look Right", command=headRight)
+
+    for button in [button3_1]:
         button.pack(fill="x", padx=5, pady=5)
-
     # endregion
 
-# camera
+# camera communication
 def fillPanel3(panel = panel3):
+    global cameraLabel
+
     # horizontally aligned frame
     frame0 = tk.Frame(panel)
     frame0.pack(anchor="w", padx=5, pady=5)
 
-    # Built-in Speech label
-    textBox1 = tk.Label(frame0, text="Built-in Speech")
+    # Robot Camera Feed label
+    textBox1 = tk.Label(frame0, text="Robot Camera Feed")
     textBox1.pack(
         side="left",
         padx=5
     )
 
-    # horizontally aligned frame
-    frame1 = tk.Frame(panel)
-    frame1.pack(anchor="w", padx=5, pady=5)
-
-    greetButton = tk.Button(
-        frame1,
-        text="Greeting",
-        # replace with function
-        command=lambda: tts_service.say(f"Hello! My name is Nao!")
+    # Robot Camera Feed
+    cameraLabel = tk.Label(panel)
+    cameraLabel.pack(
+        anchor="center",
+        padx=5,
+        pady=5
     )
 
-    instructionButton = tk.Button(
-        frame1,
-        text="Instructions",
-        # replace with function
-        command=lambda: tts_service.say(f"To perform the Three Good Things exercise, we can discuss three good things from your day. Let's try it out!")
-    )
+# update the camera to most recent frame
+def updateCamera():
 
-    exampleButton = tk.Button(
-        frame1,
-        text="Example",
-        # replace with function
-        command=lambda: tts_service.say(f"I'll start first. Today, I was fully charged, had my motors cleaned, and got to chat with my creators. Now you try.")
-    )
+    with frameLock:
+        frame = latestFrame
 
-    farewellButton = tk.Button(
-        frame1,
-        text="Farewell",
-        # replace with function
-        command=lambda: tts_service.say(f"Thank you for your participation. Have a good day!")
-    )
+    if frame is not None:
+        width, height, image_bytes = frame
 
-    frame1_objects = [greetButton, instructionButton, exampleButton, farewellButton]
-
-    # pack objects in frame1
-    for _, object in enumerate(frame1_objects):
-        object.pack(
-            side="left",
-            padx=5
+        image = Image.frombytes(
+            "RGB",
+            (width, height),
+            image_bytes
         )
 
-    # horizontally aligned frame2
-    frame2 = tk.Frame(panel)
-    frame2.pack(anchor="w", padx=5, pady=5)
+        photo = ImageTk.PhotoImage(image)
 
-    # prompt user
-    textBox2 = tk.Label(frame2, text="Custom Speech Entry")
+        cameraLabel.config(image=photo)
+        cameraLabel.image = photo
+
+    root.after(66, updateCamera)
     
-    # text input
-    textInput = tk.Entry(frame2)
+def cameraWorker():
+    global latestFrame
 
-    # submit button
-    submitButton = tk.Button(
-        frame2,
-        text="Send Speech",
-        bg="#2196f3",
-        # replace with connection function
-        command=lambda: tts_service.say(f"{textInput.get()}")
+    while not cameraStop.is_set():
+        image_data = None
+
+        try:
+            image_data = video_service.getImageRemote(cameraID)
+
+            if image_data:
+                width = image_data[0]
+                height = image_data[1]
+                image_bytes = bytes(image_data[6])
+
+                # Store only the newest frame
+                with frameLock:
+                    latestFrame = (width, height, image_bytes)
+
+        except Exception as e:
+            print(f"Camera retrieval error: {e}")
+            break
+
+        finally:
+            if image_data:
+                try:
+                    video_service.releaseImage(cameraID)
+                except Exception as e:
+                    print(f"Image release error: {e}")
+
+def startCamera():
+    global cameraThread
+
+    if cameraThread is not None and cameraThread.is_alive():
+        return
+
+    cameraStop.clear()
+
+    cameraThread = threading.Thread(
+        target=cameraWorker,
+        daemon=True
     )
 
-    objects = [textBox2, textInput, submitButton]
+    cameraThread.start()
 
-    # pack all
-    for _, object in enumerate(objects):
-        object.pack(
-            side="left",
-            expand=True,
-            padx=5
-        )
+    # Start Tkinter rendering
+    updateCamera()
 
+def closeApplication():
+    global cameraID
+
+    print("Closing application...")
+
+    cameraStop.set()
+
+    if cameraThread is not None:
+        cameraThread.join(timeout=2)
+
+    try:
+        if video_service is not None and cameraID is not None:
+            video_service.unsubscribe(cameraID)
+            cameraID = None
+
+        if session is not None:
+            session.close()
+
+    except Exception as e:
+        print(f"Cleanup error: {e}")
+
+    root.destroy()
+
+# run camera threading cleaner upon application close
+root.protocol("WM_DELETE_WINDOW", closeApplication)
 
 fillPanel1(panel1)
 fillPanel2(panel2)
