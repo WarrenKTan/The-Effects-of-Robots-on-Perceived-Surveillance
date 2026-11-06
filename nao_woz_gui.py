@@ -6,7 +6,7 @@ import threading # threading image retrieval from camera
 import sys, signal # closing application
 
 
-# services. loaded in connectNao
+# NAO services. loaded in connectNao
 session = None
 tts_service = None
 motion_service = None
@@ -25,10 +25,9 @@ cameraStop = threading.Event()
 cameraThread = None
 
 # main window with three panels
-# region
 root = tk.Tk()
 root.title("NAO HRI Control Panel")
-root.geometry("700x400")
+root.geometry("700x600")
 
 root.rowconfigure(2, weight=2)
 
@@ -74,7 +73,6 @@ panel3.grid(
     column=0,
     sticky="nsew"
 )
-# endregion
 
 # connect to Nao
 def connectNao(naoIP):
@@ -100,11 +98,13 @@ def connectNao(naoIP):
         return False
 
     try:
+        print("Initialising NAO services...")
         tts_service = session.service("ALTextToSpeech")
         motion_service  = session.service("ALMotion")
         posture_service = session.service("ALRobotPosture")
         audio_service = session.service("ALAudioDevice")
         video_service = session.service("ALVideoDevice")
+        print("NAO services successfully initialised!")
     except Exception as e:
         print(f"Failed to load services: {e}")
         return False
@@ -115,7 +115,9 @@ def connectNao(naoIP):
     # Resolution: 320x240px
     # Colour Space: RGB
     # Frames per Second: 15fps
+    print("Setting up NAO camera...")
     cameraID = video_service.subscribeCamera("NAO_WOZ_Camera", 0, 1, 11, 15)
+    print("NAO camera successfully setup!")
 
     # executed properly
     audio_service.setOutputVolume(60)
@@ -127,15 +129,14 @@ def connectNao(naoIP):
 
 # connection to Nao
 def fillPanel1(panel = panel1):
-    # horizontally aligned frame
+    # create horizontally aligned frame
     frame = tk.Frame(panel)
     frame.pack(anchor="w", padx=5, pady=5)
-
 
     # prompt user
     textBox = tk.Label(frame, text="Enter the Robot's IP:")
     
-    # text input
+    # text input 
     textInput = tk.Entry(frame)
 
     # status label
@@ -146,10 +147,11 @@ def fillPanel1(panel = panel1):
     )
     statusLabel.pack(side="right", padx=5)
 
-    # Function called when button is clicked
+    # function called when button is clicked
     def submit():
         naoIP = textInput.get()
 
+        # start connecting to NAO
         connected = connectNao(naoIP)
 
         if connected:
@@ -188,7 +190,6 @@ def fillPanel1(panel = panel1):
 # robot head movement and actions
 def fillPanel2(panel = panel2):
     # create sections
-    # region
     section1 = tk.Frame(panel, bd=1, relief="flat")
     section2 = tk.Frame(panel, bd=1, relief="flat")
     section3 = tk.Frame(panel, bd=1, relief="flat")
@@ -202,40 +203,25 @@ def fillPanel2(panel = panel2):
             expand=True
         )
 
-    # endregion
-
-    # create and pack section 1 buttons
-    # region
-    def headLeft():
-        motion_service.setAngles("HeadYaw", math.radians(20), 0.1)
-        
-    button1_1 = tk.Button(section1, text="Look Left", command=headLeft)
-
+    # create and pack buttons
+    button1_1 = tk.Button(section1, text="Look Left", command=lambda: headLook(20))
     for button in [button1_1]:
         button.pack(fill="x", padx=5, pady=5)
-    # endregion
 
-    # create and pack section 2 buttons
-    # region
-    def headMiddle():
-        motion_service.setAngles("HeadYaw", math.radians(0), 0.1)
-
-    button2_1 = tk.Button(section2, text="Look Middle", command=headMiddle)
-
+    button2_1 = tk.Button(section2, text="Look Middle", command=lambda: headLook(0))
     for button in [button2_1]:
         button.pack(fill="x", padx=5, pady=5)
-    # endregion
 
-    # create and pack section 3 buttons
-    # region
-    def headRight():
-        motion_service.setAngles("HeadYaw", math.radians(-20), 0.1)
-
-    button3_1 = tk.Button(section3, text="Look Right", command=headRight)
-
+    button3_1 = tk.Button(section3, text="Look Right", command=lambda: headLook(-20))
     for button in [button3_1]:
         button.pack(fill="x", padx=5, pady=5)
-    # endregion
+
+# turn NAO head yaw to 'angle' degrees
+def headLook(angle = 0):
+    try: 
+        motion_service.setAngles("HeadYaw", math.radians(angle), 0.1)
+    except AttributeError:
+        print("The NAO motion service is not available. Try reconnecting the NAO robot to the application and try again.")
 
 # camera communication
 def fillPanel3(panel = panel3):
