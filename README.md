@@ -41,4 +41,4 @@ Upon a successful connection, the NAO robot will say "Connected to Nao" and move
 - This is used in the experiment to know when to swap the robot's head position
 
 ## Video Demonstration
-<https://github.com/user-attachments/assets/236a10a7-7b48-4843-856b-6e9225601941>
+<https://github.com/user-attachments/assets/4e8610a8-2391-4b83-a2c7-44bf0fd99a07>
